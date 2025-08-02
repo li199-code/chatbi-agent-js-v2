@@ -1,0 +1,8 @@
+{
+  "node_version": "20",
+  "dependencies": ["."],
+  "graphs": {
+    "agent": "./chatbi_agent.ts:deepResearcher"
+  },
+  "env": ".env"
+}
