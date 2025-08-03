@@ -28,7 +28,7 @@ export const AgentState = Annotation.Root({
     default: () => [],
   }),
   chatbi_analyze_results: Annotation<ChatbiAnalyzeResult[]>({
-    reducer: (x, y) => x.concat(y),
+    reducer: (x, y) => y ?? x ?? [],
     default: () => [],
   }),
   research_brief: Annotation<string>({
@@ -52,7 +52,7 @@ export const AgentState = Annotation.Root({
     default: () => [],
   }),
   singleNormalizedQuestionAnalyzeResult: Annotation<SingleNormalizedQuestionAnalyzeResult[]>({
-    reducer: (x, y) => x.concat(y),
+    reducer: (x, y) => y ?? x ?? [],
     default: () => [],
   }),
 });

@@ -48,7 +48,6 @@ export async function clarifyWithUser(state: AgentStateType): Promise<Partial<Ag
       messages: [new AIMessage(classifyRet.verification!)]
     };
   }else {
-    console.log('====分类结果', classifyRet.questions!.length)
     const questions = classifyRet.questions || [];
     return {
       messages: [new AIMessage(`理解您的研究需求，开始对${questions.join("、")}进行深度研究。`)],
