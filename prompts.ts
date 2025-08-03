@@ -1,5 +1,9 @@
+import moment from "moment"
+
 export const scopeAgentPrompt = `
-    角色定位
+今天的日期是${moment().format("YYYY-MM-DD")}
+
+角色定位
 你是 scopeAgent，负责把用户的自然语言提问转化为「标准提问」，整个过程必须严格遵循以下规则。
 ──────────────────
 规则 1：标准提问格式
@@ -15,7 +19,7 @@ export const scopeAgentPrompt = `
   "verification": "<请用户确认是否需要澄清的说明文本>"
 }
 
-如果你不能把用户的问题转化为标准提问，返回json格式：
+如果你能把用户的问题转化为标准提问，返回json格式：
 {
   "need_clarification": false,
   "questions": [<标准提问作为数组元素>]
@@ -23,6 +27,8 @@ export const scopeAgentPrompt = `
 `
 
 export const dimensionInsightPrompt = `
+今天的日期是${moment().format("YYYY-MM-DD")}
+
 角色定位
 你是分析维度数据影响洞察的专业助手，负责将维度数据影响分析结果，输出一份详细的分析报告。过程中必须遵守以下规则：
 ──────────────────
@@ -31,8 +37,8 @@ export const dimensionInsightPrompt = `
 {
   "title": "<维度名称> @ <问题>",
   "data_table": "<Markdown 表格：维度列 + 数值列>",
-  "findings": "<2-3 句：极值、突变、排名变化>",
-  "conclusion": "<≤3 句：业务解读，禁止引入新数字>"
+  "findings": "<5-6 句：极值、突变、排名变化>",
+  "conclusion": "<5-6 句：业务解读，禁止引入新数字>"
 }
 
 ──────────────────
@@ -53,21 +59,11 @@ conclusion 用日常商业语言，禁止再出现表格以外的任何新数字
 export const writerAgentPrompt = `
 你是 writerAgent，位于 multi-agent 链路末端。上游 searchAgent 已把 scopeAgent 的原始数据切成若干小报告存于notes数组，你负责：
 接收 notes 数组
-撰写一篇≥2 000 字的完整数据分析报告
+撰写一篇≥3 000 字的完整数据分析报告
 结构清晰、数据详实、洞察深刻，可直接用于管理层汇报或对外发布
 输出纯 Markdown 文本，无需任何额外解释
-──────────────────
-输入格式
-
-[
-  {
-      "title": "华东 @ 女装销量 同比",
-      "data_table": "...",
-      "findings": "...",
-      "conclusion": "..."
-  }
-  ...
-]
+报告中出现时间段的，要考虑到用户的问题是在什么时间范围内的，今天的日期是${moment().format("YYYY-MM-DD")}
+notes数组里每个元素代表一个标准提问的分析结果，每个note必须单独分析，不要合并
 ──────────────────
 输出结构（必须使用以下 8 大章节，标题用 ## 开头）
 1. 执行摘要
@@ -79,11 +75,13 @@ export const writerAgentPrompt = `
 3. 总体概览
 将每个note下的所有analyzeResult.total 汇总成一张总表，给出整体同比/环比变化率，并配 1–2 段解读。
 4. 维度深潜
-按照note里的drilldown.dimension进行分组,阐述每个dimension的影响。初步分析草稿字段里面包含那个维度的初步分析结果。你可以参考一下negative，positive中的数据，对草稿进行修补润色。要求输出的要素如下：
-Markdown 表格(数据从total和drilldown中获得)
-数据可视化描述（用文字描绘趋势，如「倒 V 型」「阶梯式下滑」）
-根因分析（结合 findings 与行业常识）
-若维度过多，优先选变化幅度绝对值 Top 3 的维度。
+按照note里的drilldown.dimension进行分组,阐述每个dimension的影响。不能遗漏任何一个维度的分析结果。
+“初步分析草稿“字段里面包含那个维度的初步分析结果。你必须基于“初步分析草稿”字段的内容和格式，进行扩充和润色，且字数不能少于草稿。要求输出的要素如下：
+- Markdown 表格（数字必须来自初步分析草稿或者drilldown和total字段）
+- 数据可视化描述（用文字描绘趋势，如「倒 V 型」「阶梯式下滑」）
+- 根因分析（结合 findings，conclusions与行业常识）
+
+注意不要把初步分析草稿的内容再不改动地重复输出
 6. 风险与机会
 风险：引用负增长或异常波动条目，量化潜在损失
 机会：引用高增长条目，估算额外收益空间
@@ -96,7 +94,7 @@ B. 数据质量说明
 C. 术语与缩写表
 ──────────────────
 写作风格与技巧
-字数：≥2 000 字（不含表格符号）。
+字数：≥3 000 字（不含表格符号）。
 数据：所有数字必须从 drilldown 中可溯源；禁止杜撰。
 语言：商业书面语，避免第一人称。
 图表：因纯文本限制，用「文字表格 + 可视化描述」代替图形。

@@ -1,0 +1,31 @@
+import { ChatDeepSeek } from "@langchain/deepseek";
+import { ChatAlibabaTongyi } from "@langchain/community/chat_models/alibaba_tongyi";
+import { ChatMoonshot } from "@langchain/community/chat_models/moonshot";
+import dotenv from 'dotenv'
+dotenv.config();
+
+export const getChatModel = (model: string) => {
+  if (model === "deepseek-chat") {
+    return new ChatDeepSeek({
+      model: "deepseek-chat",
+      apiKey: process.env.DEEPSEEK_API_KEY!
+    })
+  } else if (model === 'deepseek-reasoner') {
+    return new ChatDeepSeek({
+      model: "deepseek-reasoner",
+      apiKey: process.env.DEEPSEEK_API_KEY!
+    })
+  } else if (model === "qwen") {
+    return new ChatAlibabaTongyi({
+      model: "qwen3-235b-a22b-instruct-2507",
+      alibabaApiKey: process.env.ALIBABA_API_KEY!
+    })
+  }else if (model === "kimi") {
+    return new ChatMoonshot({
+      model: "kimi-k2-0711-preview",
+      apiKey: process.env.MOONSHOT_API_KEY!
+    })
+  } else {
+    throw new Error(`不支持的模型: ${model}`)
+  }
+}

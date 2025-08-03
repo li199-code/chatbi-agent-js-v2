@@ -116,6 +116,7 @@ export const chatbiAnalyzeTool = tool(
           dimension,
           negative: negative.slice(0, 20),
           positive: positive.slice(0, 20),
+          初步分析草稿: ""
         };
       });
 

@@ -1,17 +1,20 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { AgentState, SupervisorState, ResearcherState, ToolCall, AnalysisResponse } from "./types";
 import { ChatDeepSeek } from "@langchain/deepseek";
-import * as dotenv from "dotenv";
+import { ChatAlibabaTongyi } from "@langchain/community/chat_models/alibaba_tongyi";
+import dotenv from 'dotenv'
 dotenv.config();
+import { JsonOutputParser } from "@langchain/core/output_parsers";
 import { HumanMessage, AIMessage, SystemMessage, BaseMessage } from "@langchain/core/messages";
 import { scopeAgentPrompt, dimensionInsightPrompt, writerAgentPrompt } from "./prompts";
 import {z} from "zod";
 import { chatbiAskTool, chatbiAnalyzeTool } from "./tools";
-import { SingleDimensionDrillDown } from "./types";
+import { SingleDimensionDrillDown, ChatbiAnalyzeResult } from "./types";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
+import { getChatModel } from "./utils";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -25,33 +28,30 @@ export async function clarifyWithUser(state: AgentStateType): Promise<Partial<Ag
 
   const responseSchema = z.object({
     need_clarification: z.boolean(),
-    verification: z.string(),
-    questions: z.array(z.string())
+    verification: z.string().optional(),
+    questions: z.array(z.string()).optional()
   })
 
-  const model = new ChatDeepSeek({
-    model: "deepseek-chat",
-    apiKey: process.env.DEEPSEEK_API_KEY
-  }).withStructuredOutput(responseSchema);
-
+  const model = (getChatModel("deepseek-chat") as ChatDeepSeek).withStructuredOutput(responseSchema);
 
   const classifyRet = await model.invoke([
     new SystemMessage({
       content: scopeAgentPrompt
     }),
     new HumanMessage({
-      content: state.messages[0].content
+      content: state.messages.at(-1)?.content
     })
-  ])
+  ]);
 
-  if (classifyRet.need_clarification){
+  if (classifyRet.need_clarification) {
     return {
-      messages: [new AIMessage(classifyRet.verification)]
+      messages: [new AIMessage(classifyRet.verification!)]
     };
   }else {
+    const questions = classifyRet.questions || [];
     return {
-      messages: [new AIMessage(`理解您的研究需求，开始对${classifyRet.questions.join("、")}进行深度研究。`)],
-      normalized_questions: classifyRet.questions
+      messages: [new AIMessage(`理解您的研究需求，开始对${questions.join("、")}进行深度研究。`)],
+      normalized_questions: questions
     };
   }
 }
@@ -59,22 +59,11 @@ export async function clarifyWithUser(state: AgentStateType): Promise<Partial<Ag
 export async function analyzeResearcher(state: AgentStateType): Promise<Partial<AgentStateType>>{
   console.log('[analyze_researcher] 获取归因结果，并逐个进行分析');
   
-  // 方法1: 手动创建与 AnalysisResponse 接口对应的 zod schema
-  const responseSchema = z.object({
-    title: z.string(),
-    data_table: z.string(),
-    findings: z.string(),
-    conclusion: z.string()
-  })
-  const model = new ChatDeepSeek({
-    model: "deepseek-chat",
-    apiKey: process.env.DEEPSEEK_API_KEY
-  })
-  // .withStructuredOutput(responseSchema);
+  const model = getChatModel("deepseek-chat");
 
   const questions = state.normalized_questions;
   for (const question of questions) {
-    const response = await chatbiAnalyzeTool.invoke({
+    const response: ChatbiAnalyzeResult = await chatbiAnalyzeTool.invoke({
       query: question
     });
 
@@ -83,7 +72,7 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
   }
 
   // 分析归因结果
-  const analyzeResults = state.chatbi_analyze_results;
+  const analyzeResults = state.chatbi_analyze_results as ChatbiAnalyzeResult[];
   for (const result of analyzeResults) {
     if (result.success){
       // 调用llm分析归因结果
@@ -113,21 +102,31 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
         analyzeResult: result.data
       })
 
-
-
     }
   }
 
-  return state;
+  if (state.singleNormalizedQuestionAnalyzeResult.length === 0) {
+    return {
+      ...state,
+      messages: [new AIMessage(`维度分析失败，无法生成报告`)]
+    };
+  }
+
+  return {
+    ...state,
+    messages: [new AIMessage(`对各维度的分析完成，开始生成报告`)]
+  };
 }
 
 async function finalReportGeneration(state: AgentStateType): Promise<Partial<AgentStateType>> {
   console.log("[final_report_generation] 生成最终研究报告");
   
-  const model = new ChatDeepSeek({
-    model: "deepseek-reasoner",
-    apiKey: process.env.DEEPSEEK_API_KEY
-  })
+  // const model = new ChatDeepSeek({
+  //   model: "deepseek-reasoner",
+  //   apiKey: process.env.DEEPSEEK_API_KEY!
+  // })
+
+  const model = getChatModel("kimi");
 
   const finalReport = await model.invoke([
     new SystemMessage({
@@ -146,9 +145,10 @@ async function finalReportGeneration(state: AgentStateType): Promise<Partial<Age
   // 保存到本地
   fs.writeFileSync(path.join(__dirname, "reports", "final_report.md"), finalReport.content as string);
 
-  state.messages.push(new AIMessage(`报告已生成`))
-  
-  return state
+  return {
+    ...state,
+    messages: [new AIMessage(`报告已生成`)]
+  }
 }
 
 // 主深度研究图
@@ -173,7 +173,21 @@ const deepResearcherBuilder = new StateGraph(AgentState)
       [END]: END
     }
   )
-  .addEdge("analyze_researcher", "final_report_generation")
+  .addConditionalEdges(
+    "analyze_researcher",
+    (state: AgentStateType) => {
+      const singleNormalizedQuestionAnalyzeResult = state.singleNormalizedQuestionAnalyzeResult;
+      if (singleNormalizedQuestionAnalyzeResult.length === 0) {
+        return END;
+      } else {
+        return "final_report_generation";
+      }
+    },
+    {
+      final_report_generation: "final_report_generation",
+      [END]: END
+    }
+  )
   .addEdge("final_report_generation", END);
 
 export const deepResearcher = deepResearcherBuilder.compile();
