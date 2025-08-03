@@ -24,7 +24,7 @@ export const AgentState = Annotation.Root({
     default: () => [],
   }),
   normalized_questions: Annotation<string[]>({
-    reducer: (x, y) => x.concat(y),
+    reducer: (x, y) => y ?? x ?? [],
     default: () => [],
   }),
   chatbi_analyze_results: Annotation<ChatbiAnalyzeResult[]>({

@@ -1,4 +1,6 @@
 import { ChatDeepSeek } from "@langchain/deepseek";
+import { ChatOpenAI } from "@langchain/openai";
+
 import { ChatAlibabaTongyi } from "@langchain/community/chat_models/alibaba_tongyi";
 import { ChatMoonshot } from "@langchain/community/chat_models/moonshot";
 import dotenv from 'dotenv'
@@ -21,9 +23,13 @@ export const getChatModel = (model: string) => {
       alibabaApiKey: process.env.ALIBABA_API_KEY!
     })
   }else if (model === "kimi") {
-    return new ChatMoonshot({
+    return new ChatOpenAI({
       model: "kimi-k2-0711-preview",
-      apiKey: process.env.MOONSHOT_API_KEY!
+      apiKey: process.env.MOONSHOT_API_KEY!,
+      maxTokens: 20000,
+      configuration: {
+        baseURL: "https://api.moonshot.cn/v1",
+      },
     })
   } else {
     throw new Error(`不支持的模型: ${model}`)

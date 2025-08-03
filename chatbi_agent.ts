@@ -48,6 +48,7 @@ export async function clarifyWithUser(state: AgentStateType): Promise<Partial<Ag
       messages: [new AIMessage(classifyRet.verification!)]
     };
   }else {
+    console.log('====分类结果', classifyRet.questions!.length)
     const questions = classifyRet.questions || [];
     return {
       messages: [new AIMessage(`理解您的研究需求，开始对${questions.join("、")}进行深度研究。`)],
@@ -62,17 +63,19 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
   const model = getChatModel("deepseek-chat");
 
   const questions = state.normalized_questions;
+  const analyzeResults: ChatbiAnalyzeResult[] = [];
   for (const question of questions) {
     const response: ChatbiAnalyzeResult = await chatbiAnalyzeTool.invoke({
       query: question
     });
 
     // 保存归因数据
-    state.chatbi_analyze_results.push(response);
+    analyzeResults.push(response);
   }
 
+
   // 分析归因结果
-  const analyzeResults = state.chatbi_analyze_results as ChatbiAnalyzeResult[];
+  const processResults: any[] = [];
   for (const result of analyzeResults) {
     if (result.success){
       // 调用llm分析归因结果
@@ -97,7 +100,7 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
       }
 
       // 带上初步草稿后准备进入最终的报告生成
-      state.singleNormalizedQuestionAnalyzeResult.push({
+      processResults.push({
         question: result.query,
         analyzeResult: result.data
       })
@@ -105,7 +108,7 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
     }
   }
 
-  if (state.singleNormalizedQuestionAnalyzeResult.length === 0) {
+  if (processResults.length === 0) {
     return {
       ...state,
       messages: [new AIMessage(`维度分析失败，无法生成报告`)]
@@ -114,6 +117,7 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
 
   return {
     ...state,
+    singleNormalizedQuestionAnalyzeResult: [...processResults],
     messages: [new AIMessage(`对各维度的分析完成，开始生成报告`)]
   };
 }
