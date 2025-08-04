@@ -146,6 +146,9 @@ async function finalReportGeneration(state: AgentStateType): Promise<Partial<Age
   state.final_report = finalReport.content as string;
 
   // 保存到本地
+  if (!fs.existsSync(path.join(__dirname, "reports"))) {
+    fs.mkdirSync(path.join(__dirname, "reports"));
+  }
   fs.writeFileSync(path.join(__dirname, "reports", "final_report.md"), finalReport.content as string);
 
   return {
