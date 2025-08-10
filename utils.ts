@@ -22,9 +22,26 @@ export const getChatModel = (model: string) => {
       model: "qwen3-235b-a22b-instruct-2507",
       alibabaApiKey: process.env.ALIBABA_API_KEY!
     })
-  }else if (model === "kimi") {
+  } else if (model === "qwen-vl") {
+    return new ChatOpenAI({
+      model: "qwen-vl-max-latest",
+      apiKey: process.env.ALIBABA_API_KEY!,
+      configuration: {
+        baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
+      },
+    })
+  } else if (model === "kimi") {
     return new ChatOpenAI({
       model: "kimi-k2-0711-preview",
+      apiKey: process.env.MOONSHOT_API_KEY!,
+      maxTokens: 20000,
+      configuration: {
+        baseURL: "https://api.moonshot.cn/v1",
+      },
+    })
+  } else if (model === "kimi-thinking") {
+    return new ChatOpenAI({
+      model: "kimi-thinking-preview",
       apiKey: process.env.MOONSHOT_API_KEY!,
       maxTokens: 20000,
       configuration: {

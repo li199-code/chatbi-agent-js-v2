@@ -23,7 +23,15 @@ export const AgentState = Annotation.Root({
     reducer: (x, y) => x.concat(y),
     default: () => [],
   }),
-  normalized_questions: Annotation<string[]>({
+  plan: Annotation<string>({
+    reducer: (x, y) => y ?? x ?? "",
+    default: () => "",
+  }),
+  yoymom_questions: Annotation<string[]>({
+    reducer: (x, y) => y ?? x ?? [],
+    default: () => [],
+  }),
+  general_questions: Annotation<string[]>({
     reducer: (x, y) => y ?? x ?? [],
     default: () => [],
   }),
@@ -31,12 +39,8 @@ export const AgentState = Annotation.Root({
     reducer: (x, y) => y ?? x ?? [],
     default: () => [],
   }),
-  research_brief: Annotation<string>({
-    reducer: (x, y) => y ?? x ?? "",
-    default: () => "",
-  }),
-  supervisor_messages: Annotation<BaseMessage[]>({
-    reducer: (x, y) => x.concat(y),
+  general_questions_result: Annotation<any[]>({
+    reducer: (x, y) => y ?? x ?? [],
     default: () => [],
   }),
   notes: Annotation<any[]>({
@@ -89,9 +93,9 @@ export interface AnalysisResponse {
 export interface ChatbiAnalyzeResult {
   success: boolean;
   data?: {
-    total: any;
-    drilldown: SingleDimensionDrillDown[];
-    impactFactorProperties: any;
+    total?: any;
+    drilldown?: SingleDimensionDrillDown[];
+    impactFactorProperties?: any;
   };
   query: string;
   timestamp: string;

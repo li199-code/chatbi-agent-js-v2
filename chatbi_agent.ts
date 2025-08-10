@@ -6,15 +6,17 @@ import dotenv from 'dotenv'
 dotenv.config();
 import { JsonOutputParser } from "@langchain/core/output_parsers";
 import { HumanMessage, AIMessage, SystemMessage, BaseMessage } from "@langchain/core/messages";
-import { scopeAgentPrompt, dimensionInsightPrompt, writerAgentPrompt } from "./prompts";
+import { scopeAgentPrompt2, dimensionInsightPrompt, writerAgentPrompt } from "./prompts";
 import {z} from "zod";
-import { chatbiAskTool, chatbiAnalyzeTool } from "./tools";
+import { chatbiAskTool, chatbiAnalyzeTool, getChatbiAllIndicators } from "./tools";
+
 import { SingleDimensionDrillDown, ChatbiAnalyzeResult } from "./types";
 import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { getChatModel } from "./utils";
+import { ChatOpenAI } from "@langchain/openai";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -23,47 +25,151 @@ const __dirname = dirname(__filename);
 type AgentStateType = typeof AgentState.State;
 
 // 主图节点函数
-export async function clarifyWithUser(state: AgentStateType): Promise<Partial<AgentStateType>> {
-  console.log("[clarify_with_user] 处理用户澄清请求");
+export async function planner(state: AgentStateType): Promise<Partial<AgentStateType>>{
+  console.log('[planner] 制定研究计划');
 
-  const responseSchema = z.object({
-    need_clarification: z.boolean(),
-    verification: z.string().optional(),
-    questions: z.array(z.string()).optional()
-  })
+  try {
+    console.log('正在初始化模型...');
+    const model = getChatModel("qwen-vl") as ChatOpenAI;
+    // 绑定工具
+    const modelWithTools = model.bindTools([getChatbiAllIndicators]);
+    console.log('基础模型初始化完成，已绑定getChatbiAllIndicators工具');
 
-  const model = (getChatModel("deepseek-chat") as ChatDeepSeek).withStructuredOutput(responseSchema);
+    const userContent = state.messages.at(-1)?.content;
+    console.log('用户输入内容:', userContent);
 
-  const classifyRet = await model.invoke([
-    new SystemMessage({
-      content: scopeAgentPrompt
-    }),
-    new HumanMessage({
-      content: state.messages.at(-1)?.content
-    })
-  ]);
+    // 修改prompt，要求返回JSON格式
+    const modifiedPrompt = scopeAgentPrompt2;
 
-  if (classifyRet.need_clarification) {
+    const response = await modelWithTools.invoke([
+      new SystemMessage({
+        content: modifiedPrompt
+      }),
+      new HumanMessage({
+        content: userContent
+      })
+    ]);
+
+    console.log("模型返回结果:", response);
+    console.log("返回结果类型:", typeof response);
+    console.log("返回内容:", response.content);
+    console.log("工具调用:", response.tool_calls);
+    
+    let finalResponse = response;
+    
+    // 如果模型返回了工具调用，需要执行工具并获取结果
+    if (response.tool_calls && response.tool_calls.length > 0) {
+      console.log('检测到工具调用，正在执行...');
+      
+      const messages = [
+        new SystemMessage({ content: modifiedPrompt }),
+        new HumanMessage({ content: userContent }),
+        response // 包含工具调用的AI消息
+      ];
+      
+      // 执行工具调用
+      for (const toolCall of response.tool_calls) {
+        console.log(`执行工具: ${toolCall.name}`);
+        
+        if (toolCall.name === 'get_chatbi_all_indicators') {
+          try {
+            const toolResult = await getChatbiAllIndicators.invoke({});
+            console.log('工具执行结果长度:', toolResult.length);
+            
+            // 添加工具结果消息
+            messages.push({
+              role: 'tool',
+              content: toolResult,
+              tool_call_id: toolCall.id
+            } as any);
+          } catch (toolError) {
+            console.error('工具执行失败:', toolError);
+            messages.push({
+              role: 'tool',
+              content: `工具执行失败: ${toolError.message}`,
+              tool_call_id: toolCall.id
+            } as any);
+          }
+        }
+      }
+      
+      // 重新调用模型，让它基于工具结果生成最终计划
+      console.log('基于工具结果重新生成计划...');
+      finalResponse = await modelWithTools.invoke(messages);
+      console.log('最终响应:', finalResponse.content);
+    }
+    
+    if (!finalResponse || !finalResponse.content) {
+      throw new Error("Model returned empty response after tool execution");
+    }
+
+    // 尝试解析JSON
+    let planRet;
+    try {
+      const content = finalResponse.content.toString();
+      console.log("尝试解析的内容:", content.substring(0, 500) + '...');
+      
+      // 提取JSON部分（如果有其他文字包围）
+      const jsonMatch = content.match(/\{[\s\S]*\}/);
+      const jsonStr = jsonMatch ? jsonMatch[0] : content;
+      
+      planRet = JSON.parse(jsonStr);
+      console.log("JSON解析成功:", Object.keys(planRet));
+    } catch (parseError) {
+      console.error("JSON解析失败:", parseError);
+      throw new Error("Failed to parse model response as JSON: " + parseError.message);
+    }
+
+    const plan = planRet.plan || "未生成计划";
+    const generalQuestions = planRet.general_questions || [];
+    const yoymomQuestions = planRet.yoymom_questions || [];
+
+    console.log('解析结果 - plan:', plan);
+    console.log('解析结果 - general_questions:', generalQuestions);
+    console.log('解析结果 - yoymom_questions:', yoymomQuestions);
+
     return {
-      messages: [new AIMessage(classifyRet.verification!)]
-    };
-  }else {
-    const questions = classifyRet.questions || [];
+      messages: [new AIMessage(plan)],
+      plan: plan,
+      general_questions: generalQuestions,
+      yoymom_questions: yoymomQuestions,
+    }
+  } catch (error) {
+    console.error("Error in planner:", error);
+    console.error("Error stack:", error.stack);
+    
     return {
-      messages: [new AIMessage(`理解您的研究需求，开始对${questions.join("、")}进行深度研究。`)],
-      normalized_questions: questions
-    };
+      messages: [new AIMessage("Failed to generate plan: " + error.message)],
+      plan: "",
+      general_questions: [],
+      yoymom_questions: [],
+    }
   }
 }
+
 
 export async function analyzeResearcher(state: AgentStateType): Promise<Partial<AgentStateType>>{
   console.log('[analyze_researcher] 获取归因结果，并逐个进行分析');
   
   const model = getChatModel("deepseek-chat");
 
-  const questions = state.normalized_questions;
+  // 一般问题
+  const generalQuestions = state.general_questions;
+  const generalResults:any[] = [];
+  for (const question of generalQuestions) {
+    const response: ChatbiAnalyzeResult = await chatbiAskTool.invoke({
+      query: question
+    });
+    if (response.success){
+      generalResults.push(response);
+    }
+  }
+
+
+
+  const yoymomQuestions = state.yoymom_questions;
   const analyzeResults: ChatbiAnalyzeResult[] = [];
-  for (const question of questions) {
+  for (const question of yoymomQuestions) {
     const response: ChatbiAnalyzeResult = await chatbiAnalyzeTool.invoke({
       query: question
     });
@@ -117,6 +223,7 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
   return {
     ...state,
     singleNormalizedQuestionAnalyzeResult: [...processResults],
+    general_questions_result: generalResults,
     messages: [new AIMessage(`对各维度的分析完成，开始生成报告`)]
   };
 }
@@ -138,7 +245,9 @@ async function finalReportGeneration(state: AgentStateType): Promise<Partial<Age
     new HumanMessage({
       content: `
       {
-        notes：${JSON.stringify(state.singleNormalizedQuestionAnalyzeResult)}
+        一般问题分析：${JSON.stringify(state.general_questions_result)}
+        归因分析：${JSON.stringify(state.singleNormalizedQuestionAnalyzeResult)}
+        研究计划：${state.plan}
       }`
     })
   ])
@@ -159,16 +268,17 @@ async function finalReportGeneration(state: AgentStateType): Promise<Partial<Age
 
 // 主深度研究图
 const deepResearcherBuilder = new StateGraph(AgentState)
-  .addNode("clarify_with_user", clarifyWithUser)
+  .addNode("planner", planner)
   .addNode("analyze_researcher", analyzeResearcher)
   .addNode("final_report_generation", finalReportGeneration)
   
-  .addEdge(START, "clarify_with_user")
+  .addEdge(START, "planner")
   .addConditionalEdges(
-    "clarify_with_user",
+    "planner",
     (state: AgentStateType) => {
-      const normalized_questions = state.normalized_questions;
-      if (normalized_questions.length === 0) {
+      const general_questions = state.general_questions;
+      const yoymom_questions = state.yoymom_questions;
+      if (general_questions.length === 0 && yoymom_questions.length === 0) {
         return END;
       } else {
         return "analyze_researcher";
@@ -201,15 +311,15 @@ export const deepResearcher = deepResearcherBuilder.compile();
 // 导出
 // export default deepResearcher;
 
-// 运行函数
 export async function runDeepResearcher(userInput: string): Promise<AgentStateType> {
   const initialState: AgentStateType = {
     messages: [new HumanMessage(userInput)],
-    normalized_questions: [],
+    plan: "",
+    yoymom_questions: [],
+    general_questions: [],
     chatbi_analyze_results: [],
-    research_brief: "",
+    general_questions_result: [], 
     singleNormalizedQuestionAnalyzeResult: [],
-    supervisor_messages: [],
     notes: [],
     final_report: "",
     raw_notes: []
