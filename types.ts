@@ -59,6 +59,14 @@ export const AgentState = Annotation.Root({
     reducer: (x, y) => y ?? x ?? [],
     default: () => [],
   }),
+  clarification_questions: Annotation<string[]>({
+    reducer: (x, y) => y ?? x ?? [],
+    default: () => [],
+  }),
+  needs_clarification: Annotation<boolean>({
+    reducer: (x, y) => y ?? x ?? false,
+    default: () => false,
+  }),
 });
 
 export interface SupervisorState {

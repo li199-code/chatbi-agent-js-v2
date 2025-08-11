@@ -31,17 +31,20 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
   try {
     console.log('正在初始化模型...');
     const model = getChatModel("qwen-vl") as ChatOpenAI;
-    // 绑定工具
-    const modelWithTools = model.bindTools([getChatbiAllIndicators]);
-    console.log('基础模型初始化完成，已绑定getChatbiAllIndicators工具');
 
     const userContent = state.messages.at(-1)?.content;
     console.log('用户输入内容:', userContent);
 
-    // 修改prompt，要求返回JSON格式
-    const modifiedPrompt = scopeAgentPrompt2;
+    // 1️⃣ 先显式拿到指标全集
+    const indicators = await getChatbiAllIndicators.invoke({});
+    console.log("指标全集长度:", indicators.length);
 
-    const response = await modelWithTools.invoke([
+    // 修改prompt，要求返回JSON格式
+// 2️⃣ 拼一个带全集的 system prompt
+    const modifiedPrompt = scopeAgentPrompt2(indicators);
+
+
+    const response = await model.invoke([
       new SystemMessage({
         content: modifiedPrompt
       }),
@@ -53,62 +56,42 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
     console.log("模型返回结果:", response);
     console.log("返回结果类型:", typeof response);
     console.log("返回内容:", response.content);
-    console.log("工具调用:", response.tool_calls);
     
     let finalResponse = response;
-    
-    // 如果模型返回了工具调用，需要执行工具并获取结果
-    if (response.tool_calls && response.tool_calls.length > 0) {
-      console.log('检测到工具调用，正在执行...');
-      
-      const messages = [
-        new SystemMessage({ content: modifiedPrompt }),
-        new HumanMessage({ content: userContent }),
-        response // 包含工具调用的AI消息
-      ];
-      
-      // 执行工具调用
-      for (const toolCall of response.tool_calls) {
-        console.log(`执行工具: ${toolCall.name}`);
-        
-        if (toolCall.name === 'get_chatbi_all_indicators') {
-          try {
-            const toolResult = await getChatbiAllIndicators.invoke({});
-            console.log('工具执行结果长度:', toolResult.length);
-            
-            // 添加工具结果消息
-            messages.push({
-              role: 'tool',
-              content: toolResult,
-              tool_call_id: toolCall.id
-            } as any);
-          } catch (toolError) {
-            console.error('工具执行失败:', toolError);
-            messages.push({
-              role: 'tool',
-              content: `工具执行失败: ${toolError.message}`,
-              tool_call_id: toolCall.id
-            } as any);
-          }
-        }
-      }
-      
-      // 重新调用模型，让它基于工具结果生成最终计划
-      console.log('基于工具结果重新生成计划...');
-      finalResponse = await modelWithTools.invoke(messages);
-      console.log('最终响应:', finalResponse.content);
-    }
     
     if (!finalResponse || !finalResponse.content) {
       throw new Error("Model returned empty response after tool execution");
     }
 
+    const content = finalResponse.content.toString();
+    console.log("模型返回内容:", content.substring(0, 500) + '...');
+    
+    // 检测是否为反问（包含问题但没有完整计划）
+    const hasQuestionMarkers = /[？?]|请问|能否|是否|如何|什么|哪个|哪些|clarify|question/i.test(content);
+    const hasJsonStructure = /\{[\s\S]*"plan"[\s\S]*\}/.test(content);
+    
+    // 如果包含问题标记但没有完整的JSON计划结构，认为是反问
+    if (hasQuestionMarkers && !hasJsonStructure) {
+      console.log('检测到模型反问，需要用户澄清');
+      
+      // 提取问题
+      const questions = content.split(/[\n。！!]/).filter(q => 
+        q.trim() && /[？?]|请问|能否|是否|如何|什么|哪个|哪些/i.test(q)
+      ).map(q => q.trim());
+      
+      return {
+        messages: [new AIMessage(content)],
+        needs_clarification: true,
+        clarification_questions: questions.length > 0 ? questions : [content],
+        plan: "",
+        general_questions: [],
+        yoymom_questions: [],
+      };
+    }
+    
     // 尝试解析JSON
     let planRet;
     try {
-      const content = finalResponse.content.toString();
-      console.log("尝试解析的内容:", content.substring(0, 500) + '...');
-      
       // 提取JSON部分（如果有其他文字包围）
       const jsonMatch = content.match(/\{[\s\S]*\}/);
       const jsonStr = jsonMatch ? jsonMatch[0] : content;
@@ -117,6 +100,22 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
       console.log("JSON解析成功:", Object.keys(planRet));
     } catch (parseError) {
       console.error("JSON解析失败:", parseError);
+      // 如果JSON解析失败，也可能是反问
+      if (hasQuestionMarkers) {
+        console.log('JSON解析失败但检测到问题，作为反问处理');
+        const questions = content.split(/[\n。！!]/).filter(q => 
+          q.trim() && /[？?]|请问|能否|是否|如何|什么|哪个|哪些/i.test(q)
+        ).map(q => q.trim());
+        
+        return {
+          messages: [new AIMessage(content)],
+          needs_clarification: true,
+          clarification_questions: questions.length > 0 ? questions : [content],
+          plan: "",
+          general_questions: [],
+          yoymom_questions: [],
+        };
+      }
       throw new Error("Failed to parse model response as JSON: " + parseError.message);
     }
 
@@ -130,6 +129,8 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
 
     return {
       messages: [new AIMessage(plan)],
+      needs_clarification: false,
+      clarification_questions: [],
       plan: plan,
       general_questions: generalQuestions,
       yoymom_questions: yoymomQuestions,
@@ -140,6 +141,8 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
     
     return {
       messages: [new AIMessage("Failed to generate plan: " + error.message)],
+      needs_clarification: false,
+      clarification_questions: [],
       plan: "",
       general_questions: [],
       yoymom_questions: [],
@@ -276,6 +279,12 @@ const deepResearcherBuilder = new StateGraph(AgentState)
   .addConditionalEdges(
     "planner",
     (state: AgentStateType) => {
+      // 如果需要澄清，直接结束并返回问题给用户
+      if (state.needs_clarification) {
+        console.log('检测到需要澄清，结束流程');
+        return END;
+      }
+      
       const general_questions = state.general_questions;
       const yoymom_questions = state.yoymom_questions;
       if (general_questions.length === 0 && yoymom_questions.length === 0) {
