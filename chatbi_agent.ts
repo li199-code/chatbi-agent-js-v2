@@ -30,7 +30,7 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
 
   try {
     console.log('正在初始化模型...');
-    const model = getChatModel("qwen-vl") as ChatOpenAI;
+    const model = getChatModel("kimi-thinking") as ChatOpenAI;
 
     const userContent = state.messages.at(-1)?.content;
     console.log('用户输入内容:', userContent);

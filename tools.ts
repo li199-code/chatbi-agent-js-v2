@@ -82,7 +82,7 @@ export const chatbiAskTool = tool(
       // 返回格式化的数据
       return {
         success: true,
-        data: response.data.result,
+        data: response.data.result?.slice(0, 10) || 'analyze工具未理解问题',
         query: input.query,
         timestamp: new Date().toISOString(),
       };
