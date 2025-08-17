@@ -223,11 +223,14 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
     };
   }
 
+  const draftWordCount = JSON.stringify(processResults).length + JSON.stringify(generalResults).length;
+
   return {
     ...state,
     singleNormalizedQuestionAnalyzeResult: [...processResults],
     general_questions_result: generalResults,
-    messages: [new AIMessage(`对各维度的分析完成，开始生成报告`)]
+    messages: [new AIMessage(`对各维度的分析完成，共${draftWordCount}字草稿，开始生成报告`)]
+
   };
 }
 

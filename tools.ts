@@ -7,54 +7,6 @@ import dotenv from "dotenv";
 import type { SingleDimensionDrillDown } from "./types";
 dotenv.config();
 
-// JSON转XML的辅助函数 - 专门为ChatBI指标数据设计
-function jsonToXml(obj: any, rootName: string = 'chatbi_indicators'): string {
-  function escapeXml(str: string): string {
-    return str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&apos;');
-  }
-  
-  let xml = `<?xml version="1.0" encoding="UTF-8"?>\n<${rootName}>\n`;
-  
-  // 遍历每个业务领域
-  for (const [domain, data] of Object.entries(obj)) {
-    xml += `  <domain name="${escapeXml(domain)}">\n`;
-    
-    // 处理指标
-    if (data && typeof data === 'object' && '指标' in data) {
-      xml += `    <indicators>\n`;
-      const indicators = (data as any)['指标'];
-      if (Array.isArray(indicators)) {
-        indicators.forEach(indicator => {
-          xml += `      <indicator>${escapeXml(indicator)}</indicator>\n`;
-        });
-      }
-      xml += `    </indicators>\n`;
-    }
-    
-    // 处理维度
-    if (data && typeof data === 'object' && '维度' in data) {
-      xml += `    <dimensions>\n`;
-      const dimensions = (data as any)['维度'];
-      if (Array.isArray(dimensions)) {
-        dimensions.forEach(dimension => {
-          xml += `      <dimension>${escapeXml(dimension)}</dimension>\n`;
-        });
-      }
-      xml += `    </dimensions>\n`;
-    }
-    
-    xml += `  </domain>\n`;
-  }
-  
-  xml += `</${rootName}>`;
-  return xml;
-}
-
 export const chatbiAskTool = tool(
   async (input: any) => {
     try {
