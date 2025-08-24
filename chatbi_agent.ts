@@ -242,7 +242,7 @@ async function finalReportGeneration(state: AgentStateType): Promise<Partial<Age
   //   apiKey: process.env.DEEPSEEK_API_KEY!
   // })
 
-  const model = getChatModel("kimi");
+  const model = getChatModel("deepseek-reasoner");
 
   const finalReport = await model.invoke([
     new SystemMessage({
