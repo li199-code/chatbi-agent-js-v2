@@ -17,6 +17,7 @@ import { fileURLToPath } from "url";
 import { dirname } from "path";
 import { getChatModel } from "./utils";
 import { ChatOpenAI } from "@langchain/openai";
+import {config} from "./config";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -30,7 +31,8 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
 
   try {
     console.log('正在初始化模型...');
-    const model = getChatModel("kimi-thinking") as ChatOpenAI;
+    // 必须是多模态模型，能理解图片内容
+    const model = getChatModel(config.planner_model) as ChatOpenAI;
 
     const userContent = state.messages.at(-1)?.content;
     console.log('用户输入内容:', userContent);
@@ -154,7 +156,7 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
 export async function analyzeResearcher(state: AgentStateType): Promise<Partial<AgentStateType>>{
   console.log('[analyze_researcher] 获取归因结果，并逐个进行分析');
   
-  const model = getChatModel("deepseek-chat");
+  const model = getChatModel(config.researcher_model);
 
   // 一般问题
   const generalQuestions = state.general_questions;
@@ -229,7 +231,7 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
     ...state,
     singleNormalizedQuestionAnalyzeResult: [...processResults],
     general_questions_result: generalResults,
-    messages: [new AIMessage(`对各维度的分析完成，共${draftWordCount}字草稿，开始生成报告`)]
+    messages: [new AIMessage(`对各维度的分析完成，共生成${draftWordCount}字草稿，开始撰写报告`)]
 
   };
 }
@@ -242,7 +244,7 @@ async function finalReportGeneration(state: AgentStateType): Promise<Partial<Age
   //   apiKey: process.env.DEEPSEEK_API_KEY!
   // })
 
-  const model = getChatModel("deepseek-reasoner");
+  const model = getChatModel(config.final_report_model);
 
   const finalReport = await model.invoke([
     new SystemMessage({
@@ -268,7 +270,10 @@ async function finalReportGeneration(state: AgentStateType): Promise<Partial<Age
 
   return {
     ...state,
-    messages: [new AIMessage(`报告已生成`)]
+    messages: [
+      new AIMessage(finalReport.content as string),
+      new AIMessage(`报告已生成，并保存到本地文件。`),
+    ]
   }
 }
 
