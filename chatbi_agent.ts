@@ -9,6 +9,9 @@ import { HumanMessage, AIMessage, SystemMessage, BaseMessage } from "@langchain/
 import { scopeAgentPrompt2, dimensionInsightPrompt, writerAgentPrompt } from "./prompts";
 import {z} from "zod";
 import { chatbiAskTool, chatbiAnalyzeTool, getChatbiAllIndicators } from "./tools";
+import { interrupt, Command } from "@langchain/langgraph";
+import { MemorySaver } from "@langchain/langgraph";
+import { HumanInterrupt, HumanInterruptConfig } from "@langchain/langgraph/prebuilt";
 
 import { SingleDimensionDrillDown, ChatbiAnalyzeResult } from "./types";
 import fs from "fs";
@@ -55,9 +58,9 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
       })
     ]);
 
-    console.log("模型返回结果:", response);
-    console.log("返回结果类型:", typeof response);
-    console.log("返回内容:", response.content);
+    // console.log("模型返回结果:", response);
+    // console.log("返回结果类型:", typeof response);
+    // console.log("返回内容:", response.content);
     
     let finalResponse = response;
     
@@ -66,30 +69,6 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
     }
 
     const content = finalResponse.content.toString();
-    console.log("模型返回内容:", content.substring(0, 500) + '...');
-    
-    // 检测是否为反问（包含问题但没有完整计划）
-    const hasQuestionMarkers = /[？?]|请问|能否|是否|如何|什么|哪个|哪些|clarify|question/i.test(content);
-    const hasJsonStructure = /\{[\s\S]*"plan"[\s\S]*\}/.test(content);
-    
-    // 如果包含问题标记但没有完整的JSON计划结构，认为是反问
-    if (hasQuestionMarkers && !hasJsonStructure) {
-      console.log('检测到模型反问，需要用户澄清');
-      
-      // 提取问题
-      const questions = content.split(/[\n。！!]/).filter(q => 
-        q.trim() && /[？?]|请问|能否|是否|如何|什么|哪个|哪些/i.test(q)
-      ).map(q => q.trim());
-      
-      return {
-        messages: [new AIMessage(content)],
-        needs_clarification: true,
-        clarification_questions: questions.length > 0 ? questions : [content],
-        plan: "",
-        general_questions: [],
-        yoymom_questions: [],
-      };
-    }
     
     // 尝试解析JSON
     let planRet;
@@ -100,54 +79,50 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
       
       planRet = JSON.parse(jsonStr);
       console.log("JSON解析成功:", Object.keys(planRet));
-    } catch (parseError) {
+    } catch (parseError: any) {
       console.error("JSON解析失败:", parseError);
-      // 如果JSON解析失败，也可能是反问
-      if (hasQuestionMarkers) {
-        console.log('JSON解析失败但检测到问题，作为反问处理');
-        const questions = content.split(/[\n。！!]/).filter(q => 
-          q.trim() && /[？?]|请问|能否|是否|如何|什么|哪个|哪些/i.test(q)
-        ).map(q => q.trim());
-        
-        return {
-          messages: [new AIMessage(content)],
-          needs_clarification: true,
-          clarification_questions: questions.length > 0 ? questions : [content],
-          plan: "",
-          general_questions: [],
-          yoymom_questions: [],
-        };
-      }
       throw new Error("Failed to parse model response as JSON: " + parseError.message);
     }
 
-    const plan = planRet.plan || "未生成计划";
-    const generalQuestions = planRet.general_questions || [];
-    const yoymomQuestions = planRet.yoymom_questions || [];
+    const steps = planRet.steps;
 
-    console.log('解析结果 - plan:', plan);
-    console.log('解析结果 - general_questions:', generalQuestions);
-    console.log('解析结果 - yoymom_questions:', yoymomQuestions);
+    // console.log('解析结果 - steps:', steps);
+
+    const beautifiedSteps = Object.entries(steps).map(([name, step]: [string, any]) => {
+      return `
+      ### ${name}
+      思路：${step.reason}
+      维度提问：${step.general_questions.join(', ')}
+      同环比提问：${step.yoymom_questions.join(', ')}
+      `
+    }).join('\n\n');
+
+    // const beautifiedPlan = `
+    // ## 研究计划
+    // ${planRet.prefix}\n
+    // ${beautifiedSteps}
+    // `
+
+    const beautifiedPlan = `\`\`\`json
+${JSON.stringify(planRet, null, 2)}
+\`\`\``
+
+
 
     return {
-      messages: [new AIMessage(plan)],
+      messages: [new AIMessage(beautifiedPlan)],
       needs_clarification: false,
       clarification_questions: [],
-      plan: plan,
-      general_questions: generalQuestions,
-      yoymom_questions: yoymomQuestions,
+      steps: planRet.steps
     }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error in planner:", error);
     console.error("Error stack:", error.stack);
     
     return {
       messages: [new AIMessage("Failed to generate plan: " + error.message)],
       needs_clarification: false,
-      clarification_questions: [],
-      plan: "",
-      general_questions: [],
-      yoymom_questions: [],
+      steps: {}
     }
   }
 }
@@ -158,81 +133,68 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
   
   const model = getChatModel(config.researcher_model);
 
-  // 一般问题
-  const generalQuestions = state.general_questions;
-  const generalResults:any[] = [];
-  for (const question of generalQuestions) {
-    const response: ChatbiAnalyzeResult = await chatbiAskTool.invoke({
-      query: question
-    });
-    if (response.success){
-      generalResults.push(response);
-    }
-  }
+  // 针对plan中的steps，每个step都进行一次分析
+  const steps = state.steps;
+  for (const [name, stepBody] of Object.entries(steps)){
+    const { reason, general_questions, yoymom_questions } = stepBody;
 
-
-
-  const yoymomQuestions = state.yoymom_questions;
-  const analyzeResults: ChatbiAnalyzeResult[] = [];
-  for (const question of yoymomQuestions) {
-    const response: ChatbiAnalyzeResult = await chatbiAnalyzeTool.invoke({
-      query: question
-    });
-
-    // 保存归因数据
-    analyzeResults.push(response);
-  }
-
-
-  // 分析归因结果
-  const processResults: any[] = [];
-  for (const result of analyzeResults) {
-    if (result.success){
-      // 调用llm分析归因结果
-      for (const dimension of result.data!.drilldown as SingleDimensionDrillDown[]){
-        // 给state.messages添加一条消息，作为进度
-        // state.messages.push(new AIMessage(`正在分析维度 ${dimension.dimension.name} 对 ${result.query} 的影响`))
-
-        const singleDimensionInsight = await model.invoke([
-          new SystemMessage({
-            content: dimensionInsightPrompt
-          }),
-          new HumanMessage({
-            content: 
-              `问题：${result.query}
-              维度：${dimension.dimension.name}
-              积极影响项：${dimension.positive.map(item => JSON.stringify(item)).join('、')}
-              消极影响项：${dimension.negative.map(item => JSON.stringify(item)).join('、')}`
-          })
-        ])
-
-        dimension.初步分析草稿 = singleDimensionInsight.content as string;
+    // 串行执行general_questions
+    const generalResults:any[] = [];
+    for (const q of general_questions) {
+      const response: ChatbiAnalyzeResult = await chatbiAskTool.invoke({
+        query: q
+      });
+      if (response.success){
+        generalResults.push({
+          question: q,
+          answer: response.data
+        });
       }
-
-      // 带上初步草稿后准备进入最终的报告生成
-      processResults.push({
-        question: result.query,
-        analyzeResult: result.data
-      })
-
     }
+    stepBody.general_questions = generalResults;
+
+    // 等general_questions执行完毕后，再串行执行yoymom_questions
+    const yoymomResults:any[] = [];
+    for (const q of yoymom_questions) {
+      const result: ChatbiAnalyzeResult = await chatbiAnalyzeTool.invoke({
+        query: q
+      });
+      if (result.success){
+        for (const dimension of result.data!.drilldown as SingleDimensionDrillDown[]){
+          // 给state.messages添加一条消息，作为进度
+          // state.messages.push(new AIMessage(`正在分析维度 ${dimension.dimension.name} 对 ${result.query} 的影响`))
+
+          const singleDimensionInsight = await model.invoke([
+            new SystemMessage({
+              content: dimensionInsightPrompt
+            }),
+            new HumanMessage({
+              content: 
+                `问题：${result.query}
+                维度：${dimension.dimension.name}
+                积极影响项：${dimension.positive.map(item => JSON.stringify(item)).join('、')}
+                消极影响项：${dimension.negative.map(item => JSON.stringify(item)).join('、')}`
+            })
+          ])
+
+          dimension.初步分析草稿 = singleDimensionInsight.content as string;
+        }
+
+        yoymomResults.push({
+          question: q,
+          analyzeResult: result.data
+        });
+      }
+    }
+    stepBody.yoymom_questions = yoymomResults;
   }
 
-  if (processResults.length === 0) {
-    return {
-      ...state,
-      messages: [new AIMessage(`维度分析失败，无法生成报告`)]
-    };
-  }
-
-  const draftWordCount = JSON.stringify(processResults).length + JSON.stringify(generalResults).length;
+  const draftWordCount = JSON.stringify(steps).length;
 
   return {
     ...state,
-    singleNormalizedQuestionAnalyzeResult: [...processResults],
-    general_questions_result: generalResults,
+    steps: steps,
     messages: [new AIMessage(`对各维度的分析完成，共生成${draftWordCount}字草稿，开始撰写报告`)]
-
   };
 }
 
@@ -251,12 +213,7 @@ async function finalReportGeneration(state: AgentStateType): Promise<Partial<Age
       content: writerAgentPrompt
     }),
     new HumanMessage({
-      content: `
-      {
-        一般问题分析：${JSON.stringify(state.general_questions_result)}
-        归因分析：${JSON.stringify(state.singleNormalizedQuestionAnalyzeResult)}
-        研究计划：${state.plan}
-      }`
+      content: JSON.stringify(state.steps)
     })
   ])
 
@@ -293,9 +250,8 @@ const deepResearcherBuilder = new StateGraph(AgentState)
         return END;
       }
       
-      const general_questions = state.general_questions;
-      const yoymom_questions = state.yoymom_questions;
-      if (general_questions.length === 0 && yoymom_questions.length === 0) {
+      const steps = state.steps;
+      if (Object.keys(steps).length === 0) {
         return END;
       } else {
         return "analyze_researcher";
@@ -306,46 +262,14 @@ const deepResearcherBuilder = new StateGraph(AgentState)
       [END]: END
     }
   )
-  .addConditionalEdges(
-    "analyze_researcher",
-    (state: AgentStateType) => {
-      const singleNormalizedQuestionAnalyzeResult = state.singleNormalizedQuestionAnalyzeResult;
-      if (singleNormalizedQuestionAnalyzeResult.length === 0) {
-        return END;
-      } else {
-        return "final_report_generation";
-      }
-    },
-    {
-      final_report_generation: "final_report_generation",
-      [END]: END
-    }
-  )
+  .addEdge("analyze_researcher", "final_report_generation")
   .addEdge("final_report_generation", END);
 
-export const deepResearcher = deepResearcherBuilder.compile();
 
-// 导出
-// export default deepResearcher;
+// 创建checkpointer以支持interrupt功能
+const checkpointer = new MemorySaver();
 
-export async function runDeepResearcher(userInput: string): Promise<AgentStateType> {
-  const initialState: AgentStateType = {
-    messages: [new HumanMessage(userInput)],
-    plan: "",
-    yoymom_questions: [],
-    general_questions: [],
-    chatbi_analyze_results: [],
-    general_questions_result: [], 
-    singleNormalizedQuestionAnalyzeResult: [],
-    notes: [],
-    final_report: "",
-    raw_notes: []
-  };
-  
-  console.log("开始深度研究流程...");
-  const result = await deepResearcher.invoke(initialState);
-  console.log("研究完成！");
-  
-  return result as AgentStateType;
-}
+export const deepResearcher = deepResearcherBuilder.compile({
+  checkpointer: checkpointer
+});
 

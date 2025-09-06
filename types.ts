@@ -23,9 +23,17 @@ export const AgentState = Annotation.Root({
     reducer: (x, y) => x.concat(y),
     default: () => [],
   }),
+  steps: Annotation<Record<string, any>>({
+    reducer: (x, y) => y ?? x ?? {},
+    default: () => {},
+  }),
   plan: Annotation<string>({
     reducer: (x, y) => y ?? x ?? "",
     default: () => "",
+  }),
+  planRet: Annotation<any>({
+    reducer: (x, y) => y ?? x ?? {},
+    default: () => {},
   }),
   yoymom_questions: Annotation<string[]>({
     reducer: (x, y) => y ?? x ?? [],
