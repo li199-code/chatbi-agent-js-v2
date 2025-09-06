@@ -97,20 +97,12 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
       `
     }).join('\n\n');
 
-    // const beautifiedPlan = `
-    // ## 研究计划
-    // ${planRet.prefix}\n
-    // ${beautifiedSteps}
-    // `
-
     const beautifiedPlan = `\`\`\`json
 ${JSON.stringify(planRet, null, 2)}
 \`\`\``
 
-
-
     return {
-      messages: [new AIMessage(beautifiedPlan)],
+      messages: [new AIMessage("我已经制定了研究计划，请你帮我看看哪些地方需要修改。")],
       needs_clarification: false,
       clarification_questions: [],
       steps: planRet.steps
@@ -125,6 +117,40 @@ ${JSON.stringify(planRet, null, 2)}
       steps: {}
     }
   }
+}
+
+// We define a fake node to ask the human
+export async function askHuman(state: AgentStateType): Promise<Partial<AgentStateType>> {
+  console.log('[ask_human] 让用户修改研究计划');
+  const request: HumanInterrupt = {
+    action_request: {
+      action: "ask_human",
+      args: {
+        steps: JSON.stringify(state.steps, null, 2)
+      }
+    },
+    config: {
+      allow_ignore: true,
+      allow_respond: true,
+      allow_edit: true,
+      allow_accept: true,
+    },
+    description: "请检查并修改用户的研究计划"
+  }
+  const response = interrupt([request])[0];
+  const newSteps = response.args.args.steps;
+  // console.log('[ask_human] 收到用户修改后的研究计划:', JSON.stringify(newSteps));
+  const beautified_plan = `\`\`\`json
+${newSteps}
+\`\`\``
+  return { 
+    messages: [
+      new AIMessage("好的，我已经收到你的修改后的研究计划。"),
+      new AIMessage(beautified_plan)
+    ],
+    needs_clarification: false,
+    steps: JSON.parse(newSteps)
+  };
 }
 
 
@@ -237,12 +263,14 @@ async function finalReportGeneration(state: AgentStateType): Promise<Partial<Age
 // 主深度研究图
 const deepResearcherBuilder = new StateGraph(AgentState)
   .addNode("planner", planner)
+  .addNode("ask_human", askHuman)
   .addNode("analyze_researcher", analyzeResearcher)
   .addNode("final_report_generation", finalReportGeneration)
   
   .addEdge(START, "planner")
+  .addEdge("planner", "ask_human")
   .addConditionalEdges(
-    "planner",
+    "ask_human",
     (state: AgentStateType) => {
       // 如果需要澄清，直接结束并返回问题给用户
       if (state.needs_clarification) {

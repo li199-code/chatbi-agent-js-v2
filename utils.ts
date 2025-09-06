@@ -20,6 +20,7 @@ export const getChatModel = (model: string) => {
   } else if (model === "qwen") {
     return new ChatAlibabaTongyi({
       model: "qwen3-235b-a22b-instruct-2507",
+      // model: "qwen-max",
       alibabaApiKey: process.env.ALIBABA_API_KEY!
     })
   } else if (model === "qwen-vl") {
@@ -32,7 +33,7 @@ export const getChatModel = (model: string) => {
     })
   } else if (model === "kimi") {
     return new ChatOpenAI({
-      model: "kimi-k2-0711-preview",
+      model: "kimi-k2-0905-preview",
       apiKey: process.env.MOONSHOT_API_KEY!,
       maxTokens: 20000,
       configuration: {
