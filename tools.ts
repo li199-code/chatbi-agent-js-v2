@@ -101,7 +101,7 @@ export const chatbiAnalyzeTool = tool(
         headers,
       })
 
-      const { drilldown, total, impactFactorProperties } = analyzeRet.data;
+      const { drilldown, total } = analyzeRet.data;
 
       // drilldown做一些处理
       // 取前五个
@@ -125,8 +125,7 @@ export const chatbiAnalyzeTool = tool(
         success: true,
         data: {
           total,
-          drilldown:normalizedDrilldown,
-          impactFactorProperties
+          drilldown:normalizedDrilldown
         },
         query: input.query,
         timestamp: new Date().toISOString(),

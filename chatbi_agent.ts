@@ -198,12 +198,16 @@ export async function analyzeResearcher(state: AgentStateType): Promise<Partial<
               content: 
                 `问题：${result.query}
                 维度：${dimension.dimension.name}
-                积极影响项：${dimension.positive.map(item => JSON.stringify(item)).join('、')}
-                消极影响项：${dimension.negative.map(item => JSON.stringify(item)).join('、')}`
+                积极影响项：${dimension.positive?.map(item => JSON.stringify(item)).join('、')}
+                消极影响项：${dimension.negative?.map(item => JSON.stringify(item)).join('、')}`
             })
           ])
 
           dimension.初步分析草稿 = singleDimensionInsight.content as string;
+          
+          // 删掉归因的明细项吧，太多了可能也没好处
+          delete dimension.positive;
+          delete dimension.negative;
         }
 
         yoymomResults.push({

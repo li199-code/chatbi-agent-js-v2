@@ -93,9 +93,9 @@ export interface ResearcherState {
 
 export interface SingleDimensionDrillDown {
   dimension: any;
-  negative: any[];
-  positive: any[];
-  初步分析草稿: string;
+  negative?: any[];
+  positive?: any[];
+  初步分析草稿?: string;
 }
 
 // 分析结果响应接口
