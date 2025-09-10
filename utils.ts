@@ -20,7 +20,7 @@ export const getChatModel = (model: string) => {
   } else if (model === "qwen") {
     return new ChatAlibabaTongyi({
       model: "qwen3-235b-a22b-instruct-2507",
-      // model: "qwen-max",
+      // model: "qwen3-max-preview",
       alibabaApiKey: process.env.ALIBABA_API_KEY!
     })
   } else if (model === "qwen-vl") {
