@@ -25,7 +25,7 @@ export const AgentState = Annotation.Root({
   }),
   steps: Annotation<Record<string, any>>({
     reducer: (x, y) => y ?? x ?? {},
-    default: () => {},
+    default: () => ({}),
   }),
   plan: Annotation<string>({
     reducer: (x, y) => y ?? x ?? "",

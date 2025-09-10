@@ -4,3 +4,5 @@
 node_modules
 .env
 /reports
+docker-compose.yaml
+*.tar

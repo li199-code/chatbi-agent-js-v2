@@ -31,6 +31,7 @@ type AgentStateType = typeof AgentState.State;
 // 主图节点函数
 export async function planner(state: AgentStateType): Promise<Partial<AgentStateType>>{
   console.log('[planner] 制定研究计划');
+  console.log('===111', process.env.DEEPSEEK_API_KEY)
 
   try {
     console.log('正在初始化模型...');
@@ -39,6 +40,10 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
 
     const userContent = state.messages.at(-1)?.content;
     console.log('用户输入内容:', userContent);
+
+    if (!userContent) {
+      throw new Error("No user message found in state");
+    }
 
     // 1️⃣ 先显式拿到指标全集
     const indicators = await getChatbiAllIndicators.invoke({});
