@@ -98,3 +98,9 @@ services:
             POSTGRES_URI: postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable
 ```
 
+### 前端
+
+前端用的nextjs，pnpm build会报错，无法部署到私有服务器。暂用`https://agentchat.vercel.app/`替代。
+
+
+

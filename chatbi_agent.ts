@@ -31,7 +31,6 @@ type AgentStateType = typeof AgentState.State;
 // 主图节点函数
 export async function planner(state: AgentStateType): Promise<Partial<AgentStateType>>{
   console.log('[planner] 制定研究计划');
-  console.log('===111', process.env.DEEPSEEK_API_KEY)
 
   try {
     console.log('正在初始化模型...');
@@ -86,7 +85,27 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
       console.log("JSON解析成功:", Object.keys(planRet));
     } catch (parseError: any) {
       console.error("JSON解析失败:", parseError);
-      throw new Error("Failed to parse model response as JSON: " + parseError.message);
+
+      // 如果返回的是纯文本而不是json，考虑手动构建json
+      if (!content.includes('{')) {
+        planRet = {
+          needs_clarification: true,
+          askBackPrompt: content,
+        }
+      } else {
+        throw new Error("Failed to parse model response as JSON: " + parseError.message);
+      }
+    }
+
+    // 检查是否需要澄清
+    if (planRet.needs_clarification) {
+      console.log("检测到需要澄清，返回澄清信息");
+      return {
+        messages: [new AIMessage(planRet.askBackPrompt)],
+        needs_clarification: true,
+        askBackPrompt: [planRet.askBackPrompt],
+        steps: {}
+      };
     }
 
     const steps = planRet.steps;
@@ -109,7 +128,7 @@ ${JSON.stringify(planRet, null, 2)}
     return {
       messages: [new AIMessage("我已经制定了研究计划，请你帮我看看哪些地方需要修改。")],
       needs_clarification: false,
-      clarification_questions: [],
+      askBackPrompt: [],
       steps: planRet.steps
     }
   } catch (error: any) {
@@ -277,16 +296,26 @@ const deepResearcherBuilder = new StateGraph(AgentState)
   .addNode("final_report_generation", finalReportGeneration)
   
   .addEdge(START, "planner")
-  .addEdge("planner", "ask_human")
   .addConditionalEdges(
-    "ask_human",
+    "planner",
     (state: AgentStateType) => {
       // 如果需要澄清，直接结束并返回问题给用户
       if (state.needs_clarification) {
-        console.log('检测到需要澄清，结束流程');
+        console.log('planner检测到需要澄清，结束流程');
         return END;
       }
       
+      // 否则继续到ask_human节点
+      return "ask_human";
+    },
+    {
+      ask_human: "ask_human",
+      [END]: END
+    }
+  )
+  .addConditionalEdges(
+    "ask_human",
+    (state: AgentStateType) => {
       const steps = state.steps;
       if (Object.keys(steps).length === 0) {
         return END;

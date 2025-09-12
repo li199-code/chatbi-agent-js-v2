@@ -12,14 +12,14 @@ async function testClarificationFlow() {
     
     console.log('\n=== 执行结果 ===');
     console.log('需要澄清:', result.needs_clarification);
-    console.log('澄清问题:', result.clarification_questions);
+    console.log('澄清问题:', result.askBackPrompt);
     console.log('计划:', result.plan);
     console.log('最后消息:', result.messages[result.messages.length - 1]?.content);
     
     if (result.needs_clarification) {
       console.log('\n✅ 成功检测到反问情况');
       console.log('反问的问题:');
-      result.clarification_questions.forEach((q, i) => {
+      result.askBackPrompt.forEach((q, i) => {
         console.log(`${i + 1}. ${q}`);
       });
     } else {

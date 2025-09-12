@@ -67,7 +67,7 @@ export const AgentState = Annotation.Root({
     reducer: (x, y) => y ?? x ?? [],
     default: () => [],
   }),
-  clarification_questions: Annotation<string[]>({
+  askBackPrompt: Annotation<string[]>({
     reducer: (x, y) => y ?? x ?? [],
     default: () => [],
   }),
