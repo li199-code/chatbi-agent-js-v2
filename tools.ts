@@ -5,7 +5,42 @@ import axios from "axios";
 import { tool } from "@langchain/core/tools";
 import dotenv from "dotenv";
 import type { SingleDimensionDrillDown } from "./types";
+import { GlobalFonts, createCanvas } from "@napi-rs/canvas";
+import * as echarts from "echarts";
+import type { EChartsOption } from "echarts";
+import moment from "moment";
 dotenv.config();
+
+// 全局变量存储当前会话的时间戳文件夹
+let currentSessionFolder: string | null = null;
+
+/**
+ * 获取或创建当前会话的时间戳文件夹
+ * 格式: YYYY-MM-DD-HH:MM:SS
+ */
+function getCurrentSessionFolder(): string {
+  if (!currentSessionFolder) {
+    // 使用连字符替代冒号，以兼容Windows文件系统
+    const timestamp = moment().format("YYYY-MM-DD-HH-mm-ss");
+    currentSessionFolder = timestamp;
+  }
+  return currentSessionFolder;
+}
+
+/**
+ * 重置会话文件夹（用于新的报告生成会话）
+ */
+export function resetSessionFolder(): void {
+  currentSessionFolder = null;
+}
+
+/**
+ * 获取当前会话的reports目录路径
+ */
+export function getCurrentReportsDir(): string {
+  const sessionFolder = getCurrentSessionFolder();
+  return path.join(process.cwd(), "reports", sessionFolder);
+}
 
 export const chatbiAskTool = tool(
   async (input: any) => {
@@ -164,12 +199,12 @@ export const chatbiAnalyzeTool = tool(
 export const saveFile = tool(
   async (input: any) => {
     try {
-      const folder = path.resolve(process.cwd(), "reports");
+      const folder = getCurrentReportsDir();
       await fs.mkdir(folder, { recursive: true });
 
       const filePath = path.join(folder, input.fileName);
       await fs.writeFile(filePath, input.content, "utf-8");
-      return "保存成功"
+      return `保存成功到: ${folder}/${input.fileName}`
     } catch (error) {
       return "保存失败"
     }
@@ -236,5 +271,142 @@ export const getChatbiAllIndicators = tool(
     }
     `,
     schema: z.object({}),
+  }
+);
+
+// 注册字体（如果字体文件存在）
+const __filename = new URL(import.meta.url).pathname;
+// 在Windows上修复路径
+const currentDir = process.platform === 'win32' 
+  ? path.dirname(__filename.substring(1)) // 移除开头的斜杠
+  : path.dirname(__filename);
+const fontPath = path.join(currentDir, "fonts", "AlibabaPuHuiTi-3-55-Regular.otf");
+
+// 检查字体文件是否存在并注册
+import { existsSync } from 'fs';
+if (existsSync(fontPath)) {
+  try {
+    GlobalFonts.registerFromPath(fontPath, "sans-serif");
+    console.log("Font registered successfully:", fontPath);
+  } catch (error) {
+    console.warn("Font registration failed:", error);
+  }
+} else {
+  console.warn("Font file not found, using system fonts:", fontPath);
+}
+
+/**
+ * 渲染ECharts图表并保存为PNG文件
+ */
+async function renderEChartsToFile(
+  echartsOption: EChartsOption,
+  filePath: string,
+  width = 800,
+  height = 600,
+  theme = "default"
+): Promise<void> {
+  // 创建Canvas
+  const canvas = createCanvas(width, height) as unknown as HTMLCanvasElement;
+  
+  // 初始化ECharts实例
+  const chart = echarts.init(canvas, theme, {
+    devicePixelRatio: 3,
+  });
+
+  // 设置平台API（用于图片加载）
+  echarts.setPlatformAPI({
+    loadImage(src, onload, onerror) {
+      const img = new Image();
+      img.onload = onload.bind(img);
+      img.onerror = onerror.bind(img);
+      img.src = src;
+      return img;
+    },
+  });
+
+  // 设置图表选项（禁用动画）
+  chart.setOption({
+    ...echartsOption,
+    animation: false,
+  });
+
+  // 生成PNG Buffer
+  // @ts-ignore
+  const buffer = canvas.toBuffer("image/png");
+  
+  // 确保目录存在
+  const dir = path.dirname(filePath);
+  await fs.mkdir(dir, { recursive: true });
+  
+  // 保存文件
+  await fs.writeFile(filePath, buffer);
+  
+  // 释放资源
+  chart.dispose();
+}
+
+export const generateChart = tool(
+  async (input: any) => {
+    try {
+      const { echartsOption, fileName, width = 800, height = 600, theme = "default" } = input;
+      
+      // 生成文件名（如果未提供）
+      const timestamp = moment().format("YYYYMMDD_HHmmss");
+      const finalFileName = fileName || `chart_${timestamp}.png`;
+      
+      // 确保文件名以.png结尾
+      const pngFileName = finalFileName.endsWith('.png') ? finalFileName : `${finalFileName}.png`;
+      
+      // 构建完整的文件路径
+      const reportsDir = getCurrentReportsDir();
+      await fs.mkdir(reportsDir, { recursive: true });
+      const filePath = path.join(reportsDir, pngFileName);
+      
+      // 渲染并保存图表
+      await renderEChartsToFile(echartsOption, filePath, width, height, theme);
+      
+      return {
+        success: true,
+        filePath: filePath,
+        fileName: pngFileName,
+        message: `图表已成功保存到: ${filePath}`,
+        timestamp: new Date().toISOString(),
+      };
+    } catch (error: any) {
+      console.error("Generate Chart Error:", error);
+      
+      return {
+        success: false,
+        error: error.message,
+        timestamp: new Date().toISOString(),
+      };
+    }
+  },
+  {
+    name: "generate_chart",
+    description: `根据ECharts配置生成图表并保存为PNG文件到/reports文件夹
+
+    参数说明：
+    - echartsOption: ECharts配置对象
+    - fileName: 可选，文件名（不包含扩展名，会自动添加.png）
+    - width: 可选，图表宽度，默认800
+    - height: 可选，图表高度，默认600
+    - theme: 可选，ECharts主题，默认"default"
+
+    返回格式：
+    {
+      "success": boolean,
+      "filePath": string, // 完整的文件路径
+      "fileName": string, // 文件名
+      "message": string,
+      "timestamp": string
+    }`,
+    schema: z.object({
+      echartsOption: z.any().describe("ECharts配置对象"),
+      fileName: z.string().optional().describe("文件名（可选，不包含扩展名）"),
+      width: z.number().optional().describe("图表宽度，默认800"),
+      height: z.number().optional().describe("图表高度，默认600"),
+      theme: z.string().optional().describe("ECharts主题，默认default")
+    }),
   }
 );
