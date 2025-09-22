@@ -138,6 +138,14 @@ export const chatbiAnalyzeTool = tool(
 
       const { drilldown, total } = analyzeRet.data;
 
+      // 不要在报告中体现贡献度
+      const itemMapFunc = (item) => {
+        const newItem = JSON.parse(JSON.stringify(item));
+        delete newItem.contrib;
+        delete newItem.contrib_abs;
+        return newItem;
+      }
+
       // drilldown做一些处理
       // 取前五个
       if (!Array.isArray(drilldown) || drilldown.length < 1){
@@ -149,11 +157,17 @@ export const chatbiAnalyzeTool = tool(
         
         return {
           dimension,
-          negative: negative.slice(0, 10),
-          positive: positive.slice(0, 10),
+          negative: negative.slice(0, 10).map(itemMapFunc),
+          positive: positive.slice(0, 10).map(itemMapFunc),
           初步分析草稿: ""
         };
       });
+
+      // total的positive和negative删除了
+      if (total) {
+        delete total.positive;
+        delete total.negative;
+      }
 
 
       return {

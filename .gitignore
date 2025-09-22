@@ -6,3 +6,4 @@ node_modules
 /reports
 docker-compose.yaml
 *.tar
+/dist
