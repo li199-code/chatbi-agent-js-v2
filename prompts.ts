@@ -228,5 +228,7 @@ export const echartOptionPrompt = (
 }
 \`\`\`
 
+重要：数据必须来自输入的表格，不能编造或计算！准确性的要求大于美观性！
+
 表格内容：
 ${table}`;
