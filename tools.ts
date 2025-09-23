@@ -19,7 +19,7 @@ let currentSessionFolder: string | null = null;
  * 获取或创建当前会话的时间戳文件夹
  * 格式: YYYY-MM-DD-HH:MM:SS
  */
-function getCurrentSessionFolder(): string {
+export function getCurrentSessionFolder(): string {
   if (!currentSessionFolder) {
     // 使用连字符替代冒号，以兼容Windows文件系统
     const timestamp = moment().format("YYYY-MM-DD-HH-mm-ss");

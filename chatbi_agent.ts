@@ -7,8 +7,7 @@ dotenv.config();
 import { JsonOutputParser } from "@langchain/core/output_parsers";
 import { HumanMessage, AIMessage, SystemMessage, BaseMessage } from "@langchain/core/messages";
 import { scopeAgentPrompt2, dimensionInsightPrompt, writerAgentPrompt } from "./prompts";
-import {z} from "zod";
-import { chatbiAskTool, chatbiAnalyzeTool, getChatbiAllIndicators, generateChart, resetSessionFolder, getCurrentReportsDir } from "./tools";
+import { chatbiAskTool, chatbiAnalyzeTool, getChatbiAllIndicators, generateChart, resetSessionFolder, getCurrentReportsDir, getCurrentSessionFolder } from "./tools";
 import { interrupt, Command } from "@langchain/langgraph";
 import { MemorySaver } from "@langchain/langgraph";
 import { HumanInterrupt, HumanInterruptConfig } from "@langchain/langgraph/prebuilt";
@@ -307,12 +306,15 @@ async function insertReportCharts(state: AgentStateType): Promise<Partial<AgentS
       fs.mkdirSync(reportsDir, { recursive: true });
     }
     fs.writeFileSync(path.join(reportsDir, "final_report.md"), reportContent);
+
+    const apiHost = process.env.API_HOST || 'http://localhost:2024';
     
     return {
       ...state,
       final_report: reportContent,
       messages: [
         new AIMessage(`图表已插入报告，并保存到本地文件。`),
+        new AIMessage(`点击下载报告：[下载](${apiHost}/download-report/${getCurrentSessionFolder()})`)
       ]
     }
   } catch (error) {

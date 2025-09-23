@@ -96,6 +96,7 @@ services:
             REDIS_URI: redis://langgraph-redis:6379
             LANGSMITH_API_KEY: xxx
             POSTGRES_URI: postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable
+            API_HOST: http://localhost:8080 // 下载报告时要用到
 ```
 
 ### 前端
