@@ -4,5 +4,8 @@
   "graphs": {
     "agent": "./chatbi_agent.ts:deepResearcher"
   },
-  "env": ".env"
+  "env": ".env",
+  "http": {
+    "app": "./app.ts:app"
+  }
 }
