@@ -12,6 +12,7 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "@hono/node-server": "^1.19.4",
     "@langchain/anthropic": "^0.3.25",
     "@langchain/community": "^0.3.49",
     "@langchain/core": "^0.3.66",
