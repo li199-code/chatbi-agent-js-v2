@@ -14,7 +14,7 @@ const imageData = fs.readFileSync(path.join(__dirname, '../agent分析思路.jpg
 const glm4 = new ChatZhipuAI({
   model: "glm-4v-plus-0111", // Available models:
   temperature: 1,
-  zhipuAIApiKey: "0dc26416454631cb3aa94e981364fc88.VOhOTHAMqnMgcOIu", // In Node.js defaults to process.env.ZHIPUAI_API_KEY
+  zhipuAIApiKey: "xxx", // In Node.js defaults to process.env.ZHIPUAI_API_KEY
 });
 
 const messages = [new HumanMessage({
