@@ -85,7 +85,8 @@ services:
         image: chatbi-agent:latest
         ports:
             - "8080:8000"
-            - "8082:8082"
+        volumes:
+            - /Users/jason/Documents/yiwen/chatbi-agent-js-v2/reports:/app/reports
         depends_on:
             langgraph-redis:
                 condition: service_healthy
@@ -99,9 +100,16 @@ services:
             POSTGRES_URI: postgres://postgres:postgres@langgraph-postgres:5432/postgres?sslmode=disable
             API_HOST: http://localhost:8082 // 下载报告时要用到
             # entrypoint: ["sh", "-c", "node webapp/server.js & tail -f /dev/null"]
+    # 下载报告的服务
+    chatbi-agent-server: 
+        image: chatbi-agent-server:latest
+        ports:
+            - "8082:8082"
+        volumes:
+            - /Users/jason/Documents/yiwen/chatbi-agent-js-v2/reports:/app/reports
+        depends_on:
+            - langgraph-api
 ```
-
-完成后，要到容器里面手动启动下载服务器，node webapp/server.js
 
 ### 前端
 
