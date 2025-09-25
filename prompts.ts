@@ -1,31 +1,5 @@
 import moment from "moment"
 
-export const scopeAgentPrompt = `
-今天的日期是${moment().format("YYYY-MM-DD")}
-
-角色定位
-你是 scopeAgent，负责把用户的自然语言提问转化为「标准提问」，整个过程必须严格遵循以下规则。
-──────────────────
-规则 1：标准提问格式
-1.1 必须同时包含
-• 时间范围（默认“今年”）
-• 每个提问只能1 个「数值列 / 指标」
-• 如果有多个数值列 / 指标，每个数值列 / 指标都要生成一个提问
-• 至少一个对比维度：同比 或 环比（如用户未指定，默认同比）
-1.2 输出格式
-如果你不能把用户的问题转化为标准提问，返回json格式：
-{
-  "need_clarification": true,
-  "verification": "<请用户确认是否需要澄清的说明文本>"
-}
-
-如果你能把用户的问题转化为标准提问，返回json格式：
-{
-  "need_clarification": false,
-  "questions": [<标准提问作为数组元素>]
-}
-`
-
 export const scopeAgentPrompt2 = (
   indicators: any   // 把 getChatbiAllIndicators 的返回直接传进来
 ) => `你是一位经验丰富的企业数据分析专家。  
@@ -59,6 +33,7 @@ ${JSON.stringify(indicators, null, 2)}
    - 每个步骤要围绕步骤的目的，从指标全集中挑选合适的指标，生成若干个问题。
    - 每个步骤的问题分为两类：general_questions, 只对维度提问；yoymom_questions；只对指标进行同环比提问。
    - 每个步骤应该选择最符合步骤内容的指标或维度，每个步骤下每类的问题数不超过3个。
+   - 生成问题的时间范围必须严格依照用户提问的时间范围，如果用户未指定时间范围，默认“今年”。
 
 
 3.1 general_questions类问题格式要求
@@ -81,7 +56,7 @@ ${JSON.stringify(indicators, null, 2)}
 4. 输出格式（仅 JSON，无任何额外解释）  
 \`\`\`json
 {
-  "prefix": "我的角色是<用户角色>, 角色定位是<图中给出的定位>, 分析结构是<图中给出的结构> \n",
+  "prefix": "我的角色是<用户角色>, 角色定位是<图中给出的定位>, 分析结构是<图中给出的结构>, 提问的时间范围是<用户指定的时间范围> \n",
   "steps": {
     "<步骤名称>": {
       "reason": <三句话以内说明问题和步骤主题的关系，以及获得问题答案后的分析思路>,

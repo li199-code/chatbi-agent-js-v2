@@ -12,7 +12,7 @@ const __dirname = path.dirname(__filename);
 
 dotenv.config();
 
-const imageData = fs.readFileSync(path.join(__dirname, '../agent分析思路_长图.jpg'));
+const imageData = fs.readFileSync(path.join(__dirname, '../agent分析思路.jpg'));
 
 const client = new ChatOpenAI({
       model: "qwen-vl-max-latest",

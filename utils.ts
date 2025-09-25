@@ -1,8 +1,8 @@
 import { ChatDeepSeek } from "@langchain/deepseek";
 import { ChatOpenAI } from "@langchain/openai";
+import { ChatZhipuAI } from "@langchain/community/chat_models/zhipuai";
 
 import { ChatAlibabaTongyi } from "@langchain/community/chat_models/alibaba_tongyi";
-import { ChatMoonshot } from "@langchain/community/chat_models/moonshot";
 import dotenv from 'dotenv'
 dotenv.config();
 import { GlobalFonts, createCanvas } from "@napi-rs/canvas";
@@ -51,7 +51,7 @@ export const getChatModel = (model: string) => {
     })
   } else if (model === "qwen-vl") {
     return new ChatOpenAI({
-      model: "qwen-vl-max-latest",
+      model: "qwen-vl-plus",
       apiKey: process.env.ALIBABA_API_KEY!,
       configuration: {
         baseURL: "https://dashscope.aliyuncs.com/compatible-mode/v1",
@@ -74,6 +74,12 @@ export const getChatModel = (model: string) => {
       configuration: {
         baseURL: "https://api.moonshot.cn/v1",
       },
+    })
+  } else if (model === 'glm-4v') {
+    // 性能比kimi thinking差太多了
+    return new ChatZhipuAI({
+      model: "glm-4v-plus-0111",
+      zhipuAIApiKey: process.env.ZHIPUAI_API_KEY!, // In Node.js defaults to process.env.ZHIPUAI_API_KEY
     })
   } else {
     throw new Error(`不支持的模型: ${model}`)

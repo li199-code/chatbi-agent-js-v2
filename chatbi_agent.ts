@@ -1,7 +1,5 @@
 import { StateGraph, START, END } from "@langchain/langgraph";
 import { AgentState, SupervisorState, ResearcherState, ToolCall, AnalysisResponse } from "./types";
-import { ChatDeepSeek } from "@langchain/deepseek";
-import { ChatAlibabaTongyi } from "@langchain/community/chat_models/alibaba_tongyi";
 import dotenv from 'dotenv'
 dotenv.config();
 import { JsonOutputParser } from "@langchain/core/output_parsers";
@@ -41,9 +39,26 @@ export async function planner(state: AgentStateType): Promise<Partial<AgentState
     // 必须是多模态模型，能理解图片内容
     const model = getChatModel(config.planner_model) as ChatOpenAI;
 
-    const userContent = state.messages.at(-1)?.content;
-    console.log('用户输入内容:', userContent);
+    let userContent = state.messages.at(-1)?.content;
+    
+    // 如果是glm-4v模型，把图片信息的格式做调整
+    if (config.planner_model === 'glm-4v') {
+      userContent = (userContent as any[]).map((item) => {
+        if (item.type === 'image') {
+          return {
+            type: 'image_url',
+            image_url: {
+              url: "data:image/jpg;base64," + item.data
+            }
+            // image_url: item.data
+          }
+        }
+        return item;
+      })
+    }
 
+    
+    console.log('用户输入内容:', userContent);
     if (!userContent) {
       throw new Error("No user message found in state");
     }
